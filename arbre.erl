@@ -12,25 +12,16 @@ calculArbreLeader(Voisins) ->
     % Comme on est le leader, tous nos voisins sont nos fils
     Fils=Voisins,
     % On attend que tous nos fils soient désactivés
-    attenteDesactivationLeader(Taille),
-    % Puis on sait qu'on a finit la construction de l'arbre
-    finConstructionArbre().
-
-% Fin de la construction de l'arbre
-finConstructionArbre()->
-    ok.
+    attenteDesactivationLeader(Taille).
 
 % Si tous les fils du leader se sont désactivés c'est bon
 attenteDesactivationLeader(Taille) when Taille == 0 ->
-    io:write('attenteDesactivationLeader Taille = 0\n'),
     ok;
 
 % Tant que tous les fils du leader ne se sont pas désactivés on attend
 attenteDesactivationLeader(Taille) when Taille > 0 ->
     receive
-	{fils,desactive,FilsUid} ->
-	    io:format("Le fils ~w est désactivé, ma taille est ~w\n",[FilsUid,Taille]),
-	    attenteDesactivationLeader(Taille-1);
+	{fils,desactive,FilsUid} ->	    attenteDesactivationLeader(Taille-1);
 	{pere,PereUid} ->
 	    PereUid ! {fils,nop,self()},
 	    attenteDesactivationLeader(Taille)
@@ -51,27 +42,22 @@ receptionFilsLeader(Taille) when Taille == 0 ->
 receptionFilsLeader(Taille) when Taille > 0 ->
     receive
 	{fils,ok,FilsUid} ->
-	    io:format("receptionFilsLeader, FilsUid : ~w, Taille : ~w\n",[FilsUid,Taille]),
 	    receptionFilsLeader(Taille-1)
     end.
 
-% Benoît
-activation(Pere) ->
-    ok.
-
 % Tous nos fils sont désactivés, on ne répond qu'aux processus qui veulent être nos père avec une réponse négative, et on attend de se faire activer pour continuer
 desactive(Pere) ->
-    io:format("~w est désactivé, mon père est ~w\n",[self(),Pere]),
     receive
 	{pere,PereUid} ->
 	    PereUid ! {fils,nop,self()},
 	    desactive(Pere);
-	{activation} -> activation(Pere)
+	sync -> Pere
     end.
 
 % Si on connaît tous nos fils et qu'ils sont tous désactivés, on envoie un message à notre père pour dire qu'on se désactive, puis on se désactive
 receptionFilsGeneral(Fils,Taille,FilsDesactives,Pere) when ((Taille == 0) and (length(Fils) == FilsDesactives)) ->
     Pere ! {fils,desactive,self()},
+    %PosPere = calcul_position_pere(
     desactive(Pere);
 
 %On connaît tous nos fils, mais ils ne sont pas tous désactivés
@@ -114,6 +100,5 @@ calculArbreGeneral(Voisins) ->
 	    envoiListe(Voisins,MessagePere),
 	    Taille=length(Voisins),
 	    % On attend la réponse de nos voisins
-	    receptionFilsGeneral([],Taille,0,PereUid);
-	X ->io:write(X)
+	    receptionFilsGeneral([],Taille,0,PereUid)
     end.

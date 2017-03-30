@@ -1,18 +1,19 @@
 -module(structure).
--export([start/0,salle/0,salle_attente_voisins/0,robot_premier_tour/4,salles_calcul_leader/2,salles_calcul_processus_voisins/1,salles_calcul_voisins/3,salle_attente_leader/2]).
+-export([start/0,salle_attente_voisins/1,robot_premier_tour/4,quelle_salle/9]).
 
 % On commence par instancier les 9 salles et les 9 robots
 start() ->
     Synchroniseur = self(),
-    register(salle1,spawn(structure,salle_attente_voisins,[])),
-    register(salle2,spawn(structure,salle_attente_voisins,[])),
-    register(salle3,spawn(structure,salle_attente_voisins,[])),
-    register(salle4,spawn(structure,salle_attente_voisins,[])),
-    register(salle5,spawn(structure,salle_attente_voisins,[])),
-    register(salle6,spawn(structure,salle_attente_voisins,[])),
-    register(salle7,spawn(structure,salle_attente_voisins,[])),
-    register(salle8,spawn(structure,salle_attente_voisins,[])),
-    register(salle9,spawn(structure,salle_attente_voisins,[])),
+    register(salle1,Salle1=spawn(structure,salle_attente_voisins,[Synchroniseur])),
+    register(salle2,Salle2=spawn(structure,salle_attente_voisins,[Synchroniseur])),
+    register(salle3,Salle3=spawn(structure,salle_attente_voisins,[Synchroniseur])),
+    register(salle4,Salle4=spawn(structure,salle_attente_voisins,[Synchroniseur])),
+    register(salle5,Salle5=spawn(structure,salle_attente_voisins,[Synchroniseur])),
+    register(salle6,Salle6=spawn(structure,salle_attente_voisins,[Synchroniseur])),
+    register(salle7,Salle7=spawn(structure,salle_attente_voisins,[Synchroniseur])),
+    register(salle8,Salle8=spawn(structure,salle_attente_voisins,[Synchroniseur])),
+    register(salle9,Salle9=spawn(structure,salle_attente_voisins,[Synchroniseur])),
+    QuelleSalle = spawn(structure,quelle_salle,[Salle1,Salle2,Salle3,Salle4,Salle5,Salle6,Salle7,Salle8,Salle9]),
     register(robot1,spawn(structure,robot_premier_tour,[self(),1,salle1,Synchroniseur])),
     register(robot2,spawn(structure,robot_premier_tour,[self(),2,salle2,Synchroniseur])),
     register(robot3,spawn(structure,robot_premier_tour,[self(),3,salle3,Synchroniseur])),
@@ -22,38 +23,102 @@ start() ->
     register(robot7,spawn(structure,robot_premier_tour,[self(),7,salle7,Synchroniseur])),
     register(robot8,spawn(structure,robot_premier_tour,[self(),8,salle8,Synchroniseur])),
     register(robot9,spawn(structure,robot_premier_tour,[self(),9,salle9,Synchroniseur])),
-    synchroniseur().
+
+    salle1 ! {quellesalle,QuelleSalle},
+    salle2 ! {quellesalle,QuelleSalle},
+    salle3 ! {quellesalle,QuelleSalle},
+    salle4 ! {quellesalle,QuelleSalle},
+    salle5 ! {quellesalle,QuelleSalle},
+    salle6 ! {quellesalle,QuelleSalle},
+    salle7 ! {quellesalle,QuelleSalle},
+    salle8 ! {quellesalle,QuelleSalle},
+    salle9 ! {quellesalle,QuelleSalle},
+    synchroniseur(),
+    syncAll().
+	
+quelle_salle(Salle1,Salle2,Salle3,Salle4,Salle5,Salle6,Salle7,Salle8,Salle9) ->
+    receive
+	{quelleSalle,IdSalle,IdSender} ->
+	    case IdSalle of
+		Salle1 ->
+		    IdSender ! 1;
+		Salle2 ->
+		    IdSender ! 2;
+		Salle3 ->
+		    IdSender ! 3;
+		Salle4 ->
+		    IdSender ! 4;
+		Salle5 ->
+		    IdSender ! 5;
+		Salle6 ->
+		    IdSender ! 6;
+		Salle7 ->
+		    IdSender ! 7;
+		Salle8 ->
+		    IdSender ! 8;
+		Salle9 ->
+		    IdSender ! 9
+	    end
+    end,
+    quelle_salle(Salle1,Salle2,Salle3,Salle4,Salle5,Salle6,Salle7,Salle8,Salle9).
+	     
 	
 
 % Permet aux robots de lock une salle tant qu'ils sont dedans
-salle() ->
-	receive
-	    {IdRobot,demande} ->IdRobot!ok,
-			   receive
-			       libere -> salle()
-			   end;
-	    fin -> ok		       
-	end.
-
-% Suivant si on est le leader ou pas, on appelle la bonne fonction de construction d'arbre (seul le leader est actif au début)
-salle_attente_leader(Voisins,ListePortes)->
+salle(PosPere,IdPere) ->
     receive
-	sync ->
+	{entrer,IdRobot} ->
+	    IdRobot ! ok,
 	    receive
-		{leader,neo} ->
-		    arbre:calculArbreLeader(Voisins);
-		{leader, nop} -> arbre:calculArbreGeneral(Voisins);
-		X -> io:format('Le processus n est ni leader ni dans salle_attente_leader (~w)',[X])
+		{pere,IdRobot} ->
+		    IdRobot ! {pere,PosPere,IdPere},
+		    receive
+			libere -> salle(PosPere,IdPere)
+		    end
 	    end
     end.
 
+% Suivant si on est le leader ou pas, on appelle la bonne fonction de construction d'arbre (seul le leader est actif au début)
+salle_attente_leader(Voisins,ListePortes,Synchroniseur)->
+    receive
+	{quellesalle,QuelleSalle} ->
+	    ok
+    end,
+    receive
+	sync ->
+	    receive
+		{leader,neo,PosPere} ->
+		    arbre:calculArbreLeader(Voisins),
+		    activationSalles(),
+		    IdPere=-1;
+		{leader, nop} ->
+		    IdPere=arbre:calculArbreGeneral(Voisins),
+		    QuelleSalle!{quelleSalle,self(),self()},
+		    receive
+			NumMoi ->
+			    ok
+		    end,
+		    QuelleSalle!{quelleSalle,IdPere,self()},
+		    receive
+			NumPere ->
+			    ok
+		    end,
+		    PosPere=calcul_pos_pere(NumMoi,NumPere)
+	    end
+    end,
+    Synchroniseur ! sync,
+    receive
+	sync ->
+	    salle(PosPere,IdPere)
+    end.
+
 % Les salles commencent par attendre la liste de leurs voisins sous deux formes : Une liste des directions et une liste des processus
-salle_attente_voisins()->
-    io:format("~w\n",[self()]),
+salle_attente_voisins(Synchroniseur)->
+    io:write(self()),
     receive
 	{voisins,Voisins,ListePortes,IdRobot} ->
 	    IdRobot ! {voisins,ok},
-	    salle_attente_leader(Voisins,ListePortes)
+	    salle_attente_leader(Voisins,ListePortes,Synchroniseur)
 	end.
 
 % Le robot au premier tour fait un tour complet de la salle pour détecter les portes
@@ -72,9 +137,16 @@ robot_premier_tour(IdRobot,NbRobot,Salle,Synchroniseur) ->
     receive 
 	{voisins,ok} -> ok
     end,
-    Leader = salles_calcul_leader(ListePortes,Salle),
+    salles_calcul_leader(ListePortes,Salle),
     Synchroniseur ! sync,
-    ok.
+    receive
+	sync ->
+	    Salle ! {entrer,self()},
+	    receive
+		ok ->
+		    prochaine_salle:robot_prochaine_salle(Salle,ouest,R)
+	    end
+    end.
 
 % Fonction pour calculer les salles voisines de la salle courante
 salles_calcul_processus_voisins(Salle)->
@@ -120,71 +192,80 @@ salles_calcul_leader(ListePortes,Salle) ->
 		salle1 -> Po = lists:nth(1,ListePortes),
 			    Pn = lists:nth(4,ListePortes),
 			    if 
-				Po or Pn ->
-					Salle ! {leader,neo};
+				Po ->
+				    Salle ! {leader,neo,ouest};
+				Pn ->
+				    Salle ! {leader,neo,nord};
 			 
   			    true -> Salle ! {leader, nop}
 			    end;
 		salle2 -> Pn = lists:nth(4,ListePortes),
 			    if 
 				Pn ->
-					Salle ! {leader,neo};
+					Salle ! {leader,neo,nord};
 				true -> Salle ! {leader, nop}
 			    end;
 		salle3 -> Pe = lists:nth(3,ListePortes),
 			    Pn = lists:nth(4,ListePortes),
 			    if 
-				Pe or Pn ->
-					Salle ! {leader,neo};
+				Pe ->
+				    Salle ! {leader,neo,est};
+				Pn ->
+				    Salle ! {leader,neo,nord};
 			 
-  			    true -> Salle ! {leader, nop}
+  			    true ->
+				    Salle ! {leader, nop}
 			    end;
 		salle6 -> Pe = lists:nth(3,ListePortes),
 			    if 
 				Pe ->
-					Salle ! {leader,neo};
-				true -> Salle ! {leader, nop}
+				    Salle ! {leader,neo,est};
+				true ->
+				    Salle ! {leader, nop}
 			    end;
 		salle9 -> Pe = lists:nth(3,ListePortes),
 			    Ps = lists:nth(2,ListePortes),
 			    if 
-				Pe or Ps ->
-					Salle ! {leader,neo};
-			 
-  			    true -> Salle ! {leader, nop}
+				Pe ->
+				    Salle ! {leader,neo,est};
+				Ps ->
+				    Salle ! {leader,neo,sud};
+				true ->
+				    Salle ! {leader, nop}
 			    end;
 		salle8 -> Ps = lists:nth(2,ListePortes),
 			    if 
 				Ps ->
-					Salle ! {leader,neo};
-				true -> Salle ! {leader, nop}
+					Salle ! {leader,neo,sud};
+				true ->
+				    Salle ! {leader, nop}
 			    end;
 		salle7 -> Po = lists:nth(1,ListePortes),
 			    Ps = lists:nth(2,ListePortes),
 			    if 
-				Po or Ps ->
-					Salle ! {leader,neo};
+				Po ->
+				    Salle ! {leader,neo,ouest};
+				Ps ->
+				    Salle ! {leader,neo,sud};
 			 
   			    true -> Salle ! {leader, nop}
 			    end;
 		salle4 -> Po = lists:nth(1,ListePortes),
 			    if 
 				Po ->
-					Salle ! {leader,neo};
-				true -> Salle ! {leader, nop}
+				    Salle ! {leader,neo,ouest};
+				true ->
+				    Salle ! {leader, nop}
 			    end;
 		salle5 -> Salle ! {leader,nop}
-
 	end.
-
-salles_construction_arbre() ->
-	ok.
-	
-robot_prochaine_salle(Pid) ->
-	ok.
 
 % Permet de synchroniser les 9 salles ou les 9 robots
 synchroniseur() ->
+    theNineReceives(),
+    activationSalles().
+    
+theNineReceives()->
     receive
 	sync ->
 	     ok
@@ -220,7 +301,26 @@ synchroniseur() ->
     receive
 	sync ->
 	     ok
-    end,
+    end.
+    
+
+syncAll()->
+    theNineReceives(),
+    activationSalles(),
+    activationRobots().
+
+activationRobots()->
+    robot1!sync,
+    robot2!sync,
+    robot3!sync,
+    robot4!sync,
+    robot5!sync,
+    robot6!sync,
+    robot7!sync,
+    robot8!sync,
+    robot9!sync.
+
+activationSalles()->
     salle1!sync,
     salle2!sync,
     salle3!sync,
@@ -229,6 +329,17 @@ synchroniseur() ->
     salle6!sync,
     salle7!sync,
     salle8!sync,
-    salle9!sync,
-    ok.
-    
+    salle9!sync.
+
+calcul_pos_pere(NumMoi,NumPere) ->
+    Res = NumPere - NumMoi,
+    case Res of
+	1 ->
+	    est;
+	-1 ->
+	    ouest;
+	3 ->
+	    sud;
+	-3 ->
+	    nord
+	end.
