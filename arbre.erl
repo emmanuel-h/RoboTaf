@@ -9,8 +9,6 @@ calculArbreLeader(Voisins) ->
     envoiListe(Voisins,MessagePere),
     % On attend que tous nos fils se soient bien activés
     receptionFilsLeader(Taille),
-    % Comme on est le leader, tous nos voisins sont nos fils
-    Fils=Voisins,
     % On attend que tous nos fils soient désactivés
     attenteDesactivationLeader(Taille).
 
@@ -21,7 +19,7 @@ attenteDesactivationLeader(Taille) when Taille == 0 ->
 % Tant que tous les fils du leader ne se sont pas désactivés on attend
 attenteDesactivationLeader(Taille) when Taille > 0 ->
     receive
-	{fils,desactive,FilsUid} ->	    attenteDesactivationLeader(Taille-1);
+	{fils,desactive} ->	    attenteDesactivationLeader(Taille-1);
 	{pere,PereUid} ->
 	    PereUid ! {fils,nop,self()},
 	    attenteDesactivationLeader(Taille)
@@ -41,7 +39,7 @@ receptionFilsLeader(Taille) when Taille == 0 ->
 % le leader attend que tous les fils du leader s'active
 receptionFilsLeader(Taille) when Taille > 0 ->
     receive
-	{fils,ok,FilsUid} ->
+	{fils,ok,_} ->
 	    receptionFilsLeader(Taille-1)
     end.
 
@@ -56,14 +54,14 @@ desactive(Pere) ->
 
 % Si on connaît tous nos fils et qu'ils sont tous désactivés, on envoie un message à notre père pour dire qu'on se désactive, puis on se désactive
 receptionFilsGeneral(Fils,Taille,FilsDesactives,Pere) when ((Taille == 0) and (length(Fils) == FilsDesactives)) ->
-    Pere ! {fils,desactive,self()},
+    Pere ! {fils,desactive},
     %PosPere = calcul_position_pere(
     desactive(Pere);
 
 %On connaît tous nos fils, mais ils ne sont pas tous désactivés
 receptionFilsGeneral(Fils,Taille,FilsDesactives,Pere) when Taille == 0 ->
     receive
-	{fils,desactive,IdFils} ->
+	{fils,desactive} ->
 	    receptionFilsGeneral(Fils,Taille,FilsDesactives+1,Pere);
 	{pere,PereUid} ->
 	    PereUid ! {fils,nop,self()},
@@ -74,7 +72,7 @@ receptionFilsGeneral(Fils,Taille,FilsDesactives,Pere) when Taille == 0 ->
 receptionFilsGeneral(Fils,Taille,FilsDesactives,Pere) when Taille > 0 ->
     receive
 	% Si on reçoit un refus de parenté, on décrémente Taille
-	{fils,nop,IdFils} ->
+	{fils,nop,_} ->
 	    receptionFilsGeneral(Fils,Taille-1,FilsDesactives,Pere);
 	% Si on reçoit une acceptation de parenté, on décrémente Taille et on ajoute Fils à la liste des fils
 	{fils,ok,IdFils} ->
@@ -84,7 +82,7 @@ receptionFilsGeneral(Fils,Taille,FilsDesactives,Pere) when Taille > 0 ->
 	    PereUid ! {fils,nop,self()},
 	    receptionFilsGeneral(Fils,Taille,FilsDesactives,Pere);
 	% Si on reçoit une désactivation d'un de nos fils, on s'en souvient en incrémentant le nombre de fils désactivés
-	{fils,desactive,IdFils} ->
+	{fils,desactive} ->
 	    receptionFilsGeneral(Fils,Taille,FilsDesactives+1,Pere)
 	%X ->io:write(X)
     end.

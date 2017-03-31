@@ -1,9 +1,10 @@
 -module(structure).
--export([start/0,salle_attente_voisins/1,robot_premier_tour/4,quelle_salle/9]).
+-export([start/0,salle_attente_voisins/1,robot_premier_tour/3,quelle_salle/9]).
 
 % On commence par instancier les 9 salles et les 9 robots
 start() ->
     Synchroniseur = self(),
+
     register(salle1,Salle1=spawn(structure,salle_attente_voisins,[Synchroniseur])),
     register(salle2,Salle2=spawn(structure,salle_attente_voisins,[Synchroniseur])),
     register(salle3,Salle3=spawn(structure,salle_attente_voisins,[Synchroniseur])),
@@ -13,16 +14,18 @@ start() ->
     register(salle7,Salle7=spawn(structure,salle_attente_voisins,[Synchroniseur])),
     register(salle8,Salle8=spawn(structure,salle_attente_voisins,[Synchroniseur])),
     register(salle9,Salle9=spawn(structure,salle_attente_voisins,[Synchroniseur])),
+
     QuelleSalle = spawn(structure,quelle_salle,[Salle1,Salle2,Salle3,Salle4,Salle5,Salle6,Salle7,Salle8,Salle9]),
-    register(robot1,spawn(structure,robot_premier_tour,[self(),1,salle1,Synchroniseur])),
-    register(robot2,spawn(structure,robot_premier_tour,[self(),2,salle2,Synchroniseur])),
-    register(robot3,spawn(structure,robot_premier_tour,[self(),3,salle3,Synchroniseur])),
-    register(robot4,spawn(structure,robot_premier_tour,[self(),4,salle4,Synchroniseur])),
-    register(robot5,spawn(structure,robot_premier_tour,[self(),5,salle5,Synchroniseur])),
-    register(robot6,spawn(structure,robot_premier_tour,[self(),6,salle6,Synchroniseur])),
-    register(robot7,spawn(structure,robot_premier_tour,[self(),7,salle7,Synchroniseur])),
-    register(robot8,spawn(structure,robot_premier_tour,[self(),8,salle8,Synchroniseur])),
-    register(robot9,spawn(structure,robot_premier_tour,[self(),9,salle9,Synchroniseur])),
+
+    register(robot1,spawn(structure,robot_premier_tour,[1,salle1,Synchroniseur])),
+    register(robot2,spawn(structure,robot_premier_tour,[2,salle2,Synchroniseur])),
+    register(robot3,spawn(structure,robot_premier_tour,[3,salle3,Synchroniseur])),
+    register(robot4,spawn(structure,robot_premier_tour,[4,salle4,Synchroniseur])),
+    register(robot5,spawn(structure,robot_premier_tour,[5,salle5,Synchroniseur])),
+    register(robot6,spawn(structure,robot_premier_tour,[6,salle6,Synchroniseur])),
+    register(robot7,spawn(structure,robot_premier_tour,[7,salle7,Synchroniseur])),
+    register(robot8,spawn(structure,robot_premier_tour,[8,salle8,Synchroniseur])),
+    register(robot9,spawn(structure,robot_premier_tour,[9,salle9,Synchroniseur])),
 
     salle1 ! {quellesalle,QuelleSalle},
     salle2 ! {quellesalle,QuelleSalle},
@@ -33,9 +36,12 @@ start() ->
     salle7 ! {quellesalle,QuelleSalle},
     salle8 ! {quellesalle,QuelleSalle},
     salle9 ! {quellesalle,QuelleSalle},
-    synchroniseur(),
-    syncAll().
+
+    synchroniseurs:synchroniseur(),
+    synchroniseurs:syncAll(),
+    ok.
 	
+% Renvoie un entier correspondant à la salle, ce qui permettra de déterminer par la suite dans quelle direction se trouve cette salle par rapport à l'actuelle
 quelle_salle(Salle1,Salle2,Salle3,Salle4,Salle5,Salle6,Salle7,Salle8,Salle9) ->
     receive
 	{quelleSalle,IdSalle,IdSender} ->
@@ -79,7 +85,7 @@ salle(PosPere,IdPere) ->
     end.
 
 % Suivant si on est le leader ou pas, on appelle la bonne fonction de construction d'arbre (seul le leader est actif au début)
-salle_attente_leader(Voisins,ListePortes,Synchroniseur)->
+salle_attente_leader(Voisins,Synchroniseur)->
     receive
 	{quellesalle,QuelleSalle} ->
 	    ok
@@ -89,20 +95,23 @@ salle_attente_leader(Voisins,ListePortes,Synchroniseur)->
 	    receive
 		{leader,neo,PosPere} ->
 		    arbre:calculArbreLeader(Voisins),
-		    activationSalles(),
+		    synchroniseurs:activationSalles(),
 		    IdPere=-1;
 		{leader, nop} ->
 		    IdPere=arbre:calculArbreGeneral(Voisins),
+		    % On récupère notre numéro de salle
 		    QuelleSalle!{quelleSalle,self(),self()},
 		    receive
 			NumMoi ->
 			    ok
 		    end,
+		    % On récupère le numéro de salle de notre père
 		    QuelleSalle!{quelleSalle,IdPere,self()},
 		    receive
 			NumPere ->
 			    ok
 		    end,
+		    % Puis on calcule la direction dans laquelle se trouve notre père
 		    PosPere=calcul_pos_pere(NumMoi,NumPere)
 	    end
     end,
@@ -114,15 +123,14 @@ salle_attente_leader(Voisins,ListePortes,Synchroniseur)->
 
 % Les salles commencent par attendre la liste de leurs voisins sous deux formes : Une liste des directions et une liste des processus
 salle_attente_voisins(Synchroniseur)->
-    io:write(self()),
     receive
-	{voisins,Voisins,ListePortes,IdRobot} ->
+	{voisins,Voisins,IdRobot} ->
 	    IdRobot ! {voisins,ok},
-	    salle_attente_leader(Voisins,ListePortes,Synchroniseur)
+	    salle_attente_leader(Voisins,Synchroniseur)
 	end.
 
 % Le robot au premier tour fait un tour complet de la salle pour détecter les portes
-robot_premier_tour(IdRobot,NbRobot,Salle,Synchroniseur) ->
+robot_premier_tour(NbRobot,Salle,Synchroniseur) ->
     R = robotlab:get_robot(NbRobot),
     O=robotlab:mur(R),
     S=robotlab:mur(R),
@@ -132,15 +140,18 @@ robot_premier_tour(IdRobot,NbRobot,Salle,Synchroniseur) ->
     % On calcule les processus
     ListeProcessusVoisins = salles_calcul_processus_voisins(Salle),
     Voisins = salles_calcul_voisins(ListePortes,ListeProcessusVoisins,[]),
-    %On envoie à la salle la liste de ses voisins
-    Salle ! {voisins,Voisins,ListePortes,self()},
+    % On envoie à la salle la liste de ses voisins
+    Salle ! {voisins,Voisins,self()},
     receive 
 	{voisins,ok} -> ok
     end,
+    % On lance le calcul des salles pour la construction de l'arbre
     salles_calcul_leader(ListePortes,Salle),
+    % On attend que les salles aient fini de construire l'arbre
     Synchroniseur ! sync,
     receive
 	sync ->
+	    % On lance l'agorithme de déplacement des robots
 	    Salle ! {entrer,self()},
 	    receive
 		ok ->
@@ -260,77 +271,7 @@ salles_calcul_leader(ListePortes,Salle) ->
 		salle5 -> Salle ! {leader,nop}
 	end.
 
-% Permet de synchroniser les 9 salles ou les 9 robots
-synchroniseur() ->
-    theNineReceives(),
-    activationSalles().
-    
-theNineReceives()->
-    receive
-	sync ->
-	     ok
-    end,
-    receive
-	sync ->
-	     ok
-    end,
-    receive
-	sync ->
-	     ok
-    end,
-    receive
-	sync ->
-	     ok
-    end,
-    receive
-	sync ->
-	     ok
-    end,
-    receive
-	sync ->
-	     ok
-    end,
-    receive
-	sync ->
-	     ok
-    end,
-    receive
-	sync ->
-	     ok
-    end,
-    receive
-	sync ->
-	     ok
-    end.
-    
-
-syncAll()->
-    theNineReceives(),
-    activationSalles(),
-    activationRobots().
-
-activationRobots()->
-    robot1!sync,
-    robot2!sync,
-    robot3!sync,
-    robot4!sync,
-    robot5!sync,
-    robot6!sync,
-    robot7!sync,
-    robot8!sync,
-    robot9!sync.
-
-activationSalles()->
-    salle1!sync,
-    salle2!sync,
-    salle3!sync,
-    salle4!sync,
-    salle5!sync,
-    salle6!sync,
-    salle7!sync,
-    salle8!sync,
-    salle9!sync.
-
+% Grâce aux numéros de deux salles, on peut déterminer la position de l'une par rapport à l'autre
 calcul_pos_pere(NumMoi,NumPere) ->
     Res = NumPere - NumMoi,
     case Res of
